@@ -20,7 +20,9 @@ my_recipe <- recipe(ACTION ~ ., data = train) %>%
   step_mutate_at(all_numeric_predictors(), fn = factor) %>%
   step_novel(all_nominal_predictors()) %>% 
   step_other(all_nominal_predictors(), threshold = 0.01) %>%
-  step_dummy(all_nominal_predictors())
+  step_dummy(all_nominal_predictors()) #|>
+  # step_normalize(all_predictors()) |>
+  # step_pca(all_predictors(), threshold= 0.8)
 
 prep <- prep(my_recipe)
 baked <- bake(prep, new_data = train)
@@ -75,10 +77,9 @@ preds <- final_wf |>
 # Bind the Id column and rename .pred_1 to Action
 kaggle_submission <- bind_cols(
   Id = test$id,
-  preds
-) %>%
+  preds) %>%
   rename(Action = .pred_1) %>%  # rename to match Kaggle format exactly
   select(Id, Action)
 
 # Write to CSV
-vroom_write(kaggle_submission, file = "./PenalizedLogRegression1.csv", delim = ",")
+vroom_write(kaggle_submission, file = "./PenalizedLogRegression2.csv", delim = ",")

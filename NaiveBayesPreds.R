@@ -1,13 +1,12 @@
 # ==============================================================================
-# ========================= K Nearest Neighbors Preds ==========================
+# ========================== Naive Bayes Predictions ===========================
 # ==============================================================================
-
 
 library(vroom)
 library(tidymodels)
+library(discrim)
 library(workflows)
-library(kknn)
-
+library(naivebayes)
 
 # Read in data sets 
 train <- vroom("/Users/juneferre/fall2025/stat348/Kaggle/amazon/train.csv") |>
@@ -27,25 +26,27 @@ baked <- bake(prep, new_data = train)
 
 
 # Define model
-knn_mod <- nearest_neighbor(neighbors = tune()) |>
+nb_mod <- naive_Bayes(Laplace = tune(), smoothness=tune()) |>
   set_mode('classification') |>
-  set_engine('kknn')
+  set_engine('naivebayes')
 
 # workflow 
-knn_wf <- workflow() |>
+nb_wf <- workflow() |>
   add_recipe(my_recipe) |>
-  add_model(knn_mod)
+  add_model(nb_mod)
 
 
 # cross validation to tune neighbors
 folds <- vfold_cv(train, v = 5)
 
 ## grid of values to tune over
-tuning_grid <- grid_regular(neighbors(), levels = 10)
+tuning_grid <- grid_regular(Laplace(),
+                            smoothness(),
+                            levels=5)
 
 
 ## run the Cross Validation
-CV_results <- knn_wf |>
+CV_results <- nb_wf |>
   tune_grid(resamples = folds,
             grid = tuning_grid,
             metrics = metric_set(roc_auc))
@@ -55,7 +56,7 @@ bestTune
 
 # finalize workflow 
 
-final_wf <- knn_wf |>
+final_wf <- nb_wf |>
   finalize_workflow(bestTune) |>
   fit(data = train)
 
@@ -78,4 +79,4 @@ kaggle_submission <- bind_cols(
   select(Id, Action)
 
 # Write to CSV
-vroom_write(kaggle_submission, file = "./Knn1.csv", delim = ",")
+vroom_write(kaggle_submission, file = "./NaiveBayes.csv", delim = ",")

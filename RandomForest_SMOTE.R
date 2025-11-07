@@ -6,6 +6,7 @@ library(tidymodels)
 library(embed)
 library(workflows)
 library(kernlab)
+library(themis)
 # -----------------------------------------------------------------------------
 # Read in data sets
 # -----------------------------------------------------------------------------
@@ -18,68 +19,50 @@ test <- vroom("/Users/juneferre/fall2025/stat348/Kaggle/amazon/test.csv")
 # Feature engineering
 # -----------------------------------------------------------------------------
 my_recipe <- recipe(ACTION ~ ., data = train) %>%
-  #step_mutate_at(all_numeric_predictors(), fn = factor) %>%
   step_novel(all_nominal_predictors()) %>% 
   step_other(all_nominal_predictors(), threshold = 0.01) %>%
-  step_dummy(all_nominal_predictors()) |>
-  step_normalize(all_predictors())
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_predictors()) %>%
+  step_smote(all_outcomes(), neighbors = 5)   # 💡 New line
+
 
 prep <- prep(my_recipe)
 baked <- bake(prep, new_data = train)
-
-# -----------------------------------------------------------------------------
-# SVM models
-# -----------------------------------------------------------------------------
-
-svmPoly <- svm_poly(degree=tune(), cost=tune()) |>
-  set_mode("classification") |>
-  set_engine('kernlab', max.iter = 1000)
-
-svmRadial <- svm_rbf(rbf_sigma=tune(), cost=tune()) |>
-  set_mode("classification") |>
-  set_engine("kernlab", max.iter = 1000)
-
-svmLinear <- svm_linear(cost=tune()) |>
-  set_mode("classification") |>
-  set_engine("kernlab", max.iter= 1000)
 
 
 # -----------------------------------------------------------------------------
 # Define model
 # -----------------------------------------------------------------------------
-# my_mod <- rand_forest(mtry=tune(),
-#                       min_n=tune(),
-#                       trees=500) |>
-#   set_engine('ranger') |>
-#   set_mode("classification")
+my_mod <- rand_forest(
+  mtry  = tune(),
+  min_n = tune(),
+  trees = 1000
+) %>%
+  set_engine("ranger") %>%
+  set_mode("classification")
 
-
-# -----------------------------------------------------------------------------
-# workflow 
-# -----------------------------------------------------------------------------
-
-wf <- workflow() |>
-  add_recipe(my_recipe) |>
-  add_model(svmRadial) 
-
+wf <- workflow() %>%
+  add_recipe(my_recipe) %>%
+  add_model(my_mod)
 
 # -----------------------------------------------------------------------------
-# cross validation to tune mixture and penalty
+# Parameter tuning setup
 # -----------------------------------------------------------------------------
+param_set <- parameters(
+  finalize(mtry(), baked),
+  min_n()
+)
 
-# Grid of values to tune over
-grid_of_tuning_params <- grid_regular(cost(range = c(-2, 2)),           # 0.01 to 100
-                                      rbf_sigma(range = c(-5, -1)),
-                                      levels = 3)
-
+grid_of_tuning_params <- grid_regular(param_set, levels = 5)
 
 folds <- vfold_cv(train, v = 3, repeats = 1)
 
-## run the Cross Validation
-CV_results <- wf |>
-  tune_grid(resamples = folds,
-            grid = grid_of_tuning_params,
-            metrics = metric_set(roc_auc))
+CV_results <- tune_grid(
+  wf,
+  resamples = folds,
+  grid = grid_of_tuning_params,
+  metrics = metric_set(roc_auc)
+)
 
 bestTune <- select_best(CV_results, metric = "roc_auc")
 bestTune
@@ -107,4 +90,4 @@ kaggle_submission <- bind_cols(
   select(Id, Action)
 
 # Write to CSV
-vroom_write(kaggle_submission, file = "./ClassificationTrees3.csv", delim = ",")
+vroom_write(kaggle_submission, file = "./ClassificationTrees_SMOTE3.csv", delim = ",")
